@@ -72,11 +72,13 @@ pr_review_comment (PR has needs-code-review)
 
 | Workflow | Guard |
 |---|---|
-| `revise-plan.yml` | PR has `needs-plan-review` AND comment author is not `github-actions[bot]` |
+| `revise-plan.yml` | Comment is on a PR (not a plain issue — check `github.event.issue.pull_request` is set) AND PR has `needs-plan-review` AND comment author is not `github-actions[bot]` |
 | `implement.yml` | Label applied is `plan-approved` AND PR is in draft state |
-| `revise-impl.yml` | PR has `needs-code-review` AND reviewer is not `github-actions[bot]` AND PR has at least one human approval |
+| `revise-impl.yml` | PR has `needs-code-review` AND reviewer is not `github-actions[bot]` AND PR has at least one approved GitHub PR review (not just a comment) |
 
-The human-approval guard on `revise-impl.yml` prevents a stray review comment from triggering the implementer before a human has signed off on starting implementation.
+The "plain issue" guard on `revise-plan.yml` is necessary because `issue_comment` events fire on both plain issues and PRs on GitHub. Without it, a comment on the original issue (not the draft PR) could trigger the revision workflow.
+
+The PR review approval guard on `revise-impl.yml` prevents a stray inline comment from triggering the implementer before a human has explicitly approved the PR.
 
 ---
 
@@ -224,7 +226,7 @@ Concurrent revision runs on the same branch cause push conflicts. Mitigation: ad
 
 ```yaml
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
+  group: pr-${{ github.event.issue.number }}   # issue_comment uses issue.number; pr_review_comment uses pull_request.number
   cancel-in-progress: true
 ```
 
