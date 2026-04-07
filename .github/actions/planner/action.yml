@@ -28,6 +28,10 @@ runs:
     - name: Copy superpowers plugin
       shell: bash
       run: |
+        if [ ! -d "$GITHUB_WORKSPACE/.claude/plugins/superpowers" ]; then
+          echo "ERROR: superpowers plugin not found at $GITHUB_WORKSPACE/.claude/plugins/superpowers" >&2
+          exit 1
+        fi
         mkdir -p ~/.claude/plugins
         cp -r "$GITHUB_WORKSPACE/.claude/plugins/superpowers" ~/.claude/plugins/superpowers
 
@@ -35,7 +39,8 @@ runs:
       shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        PROMPT_FILE: ${{ inputs.prompt-file }}
       run: |
         claude --dangerously-skip-permissions \
                --max-turns 30 \
-               -p "$(cat '${{ inputs.prompt-file }}')"
+               -p "$(cat "$PROMPT_FILE")"
