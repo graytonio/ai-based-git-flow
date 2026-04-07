@@ -46,8 +46,10 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           BRANCH="plan/issue-${ISSUE_NUMBER}"
-          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
-          gh pr edit "$PR_NUMBER" --add-label "needs-plan-review"
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+            gh pr edit "$PR_NUMBER" --add-label "needs-plan-review"
+          fi
 
       - name: Apply needs-human-intervention on failure
         if: failure()
