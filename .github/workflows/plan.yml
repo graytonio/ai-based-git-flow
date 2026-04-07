@@ -1,0 +1,62 @@
+name: AI Plan
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Prepare prompt
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 -c "
+          import os
+          t = open('.github/prompts/planner-initial.md').read()
+          t = t.replace('{{ISSUE_NUMBER}}', os.environ['ISSUE_NUMBER'])
+          t = t.replace('{{ISSUE_TITLE}}', os.environ['ISSUE_TITLE'])
+          t = t.replace('{{ISSUE_BODY}}', os.environ['ISSUE_BODY'])
+          open('/tmp/prompt.md', 'w').write(t)
+          "
+
+      - name: Run planner agent
+        uses: ./.github/actions/planner
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt-file: /tmp/prompt.md
+
+      - name: Apply needs-plan-review label
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          BRANCH="plan/issue-${ISSUE_NUMBER}"
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
+          gh pr edit "$PR_NUMBER" --add-label "needs-plan-review"
+
+      - name: Apply needs-human-intervention on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          BRANCH="plan/issue-${ISSUE_NUMBER}"
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr edit "$PR_NUMBER" --add-label "needs-human-intervention"
+          fi
