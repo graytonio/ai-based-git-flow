@@ -1,0 +1,41 @@
+name: 'AI Planner Agent'
+description: 'Installs Claude Code, copies the superpowers plugin, and runs the planner agent'
+inputs:
+  anthropic-api-key:
+    description: 'Anthropic API key'
+    required: true
+  prompt-file:
+    description: 'Absolute path to the prepared prompt file'
+    required: true
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Claude Code
+      shell: bash
+      run: npm install -g @anthropic-ai/claude-code
+
+    - name: Configure git identity
+      shell: bash
+      run: |
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+
+    - name: Copy superpowers plugin
+      shell: bash
+      run: |
+        mkdir -p ~/.claude/plugins
+        cp -r "$GITHUB_WORKSPACE/.claude/plugins/superpowers" ~/.claude/plugins/superpowers
+
+    - name: Run planner agent
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        claude --dangerously-skip-permissions \
+               --max-turns 30 \
+               -p "$(cat '${{ inputs.prompt-file }}')"
