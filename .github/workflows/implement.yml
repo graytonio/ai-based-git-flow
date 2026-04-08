@@ -32,6 +32,11 @@ jobs:
           # Derive plan path from branch name convention: plan/issue-{n}
           BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')
           ISSUE_NUM="${BRANCH#plan/issue-}"
+          if ! [[ "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+            echo "Branch '$BRANCH' does not follow plan/issue-{n} convention — skipping" >&2
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "plan-path=.claude/plans/issue-${ISSUE_NUM}.md" >> "$GITHUB_OUTPUT"
 
   implement:
