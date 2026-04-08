@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should-run: ${{ steps.check.outputs.should-run }}
-      plan-path: ${{ steps.check.outputs.plan-path }}
     steps:
       - name: Check conditions
         id: check
@@ -38,12 +37,11 @@ jobs:
             exit 0
           fi
           # Check PR has at least one approved human review
-          HAS_APPROVAL=$(gh pr view "$PR_NUMBER" --json reviews --jq '[.reviews[] | select(.state == "APPROVED" and .author.login != "github-actions[bot]")] | length')
+          HAS_APPROVAL=$(gh pr view "$PR_NUMBER" --json reviews --jq '[.reviews[] | select(.state == "APPROVED" and (.author.login // "") != "github-actions[bot]")] | length')
           if [ "$HAS_APPROVAL" = "0" ]; then
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "should-run=true" >> "$GITHUB_OUTPUT"
           BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName')
           ISSUE_NUM="${BRANCH#plan/issue-}"
           if ! [[ "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
@@ -51,7 +49,7 @@ jobs:
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "plan-path=.claude/plans/issue-${ISSUE_NUM}.md" >> "$GITHUB_OUTPUT"
+          echo "should-run=true" >> "$GITHUB_OUTPUT"
 
   revise:
     needs: guard
