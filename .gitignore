@@ -3,6 +3,3 @@
 
 # Git worktrees
 .worktrees/
-
-# Temporary prompt files (generated at CI runtime)
-/tmp/prompt.md
