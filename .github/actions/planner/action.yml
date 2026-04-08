@@ -41,6 +41,7 @@ runs:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         PROMPT_FILE: ${{ inputs.prompt-file }}
       run: |
+        PROMPT_CONTENT=$(cat "$PROMPT_FILE")
         claude --dangerously-skip-permissions \
                --max-turns 30 \
-               -p "$(cat "$PROMPT_FILE")"
+               -p "$PROMPT_CONTENT"
