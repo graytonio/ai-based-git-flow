@@ -84,14 +84,14 @@ jobs:
           t = t.replace('{{COMMENT_AUTHOR}}', os.environ['COMMENT_AUTHOR'])
           t = t.replace('{{COMMENT_PATH}}', os.environ['COMMENT_PATH'])
           t = t.replace('{{COMMENT_LINE}}', os.environ.get('COMMENT_LINE') or 'unknown')
-          open('/tmp/prompt.md', 'w').write(t)
+          open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w').write(t)
           "
 
       - name: Run implementer agent
         uses: ./.github/actions/implementer
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt-file: /tmp/prompt.md
+          prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Apply needs-human-intervention on failure
         if: failure()

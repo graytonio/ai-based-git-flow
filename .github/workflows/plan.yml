@@ -30,14 +30,14 @@ jobs:
           t = t.replace('{{ISSUE_NUMBER}}', os.environ['ISSUE_NUMBER'])
           t = t.replace('{{ISSUE_TITLE}}', os.environ['ISSUE_TITLE'])
           t = t.replace('{{ISSUE_BODY}}', os.environ['ISSUE_BODY'])
-          open('/tmp/prompt.md', 'w').write(t)
+          open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w').write(t)
           "
 
       - name: Run planner agent
         uses: ./.github/actions/planner
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt-file: /tmp/prompt.md
+          prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Apply needs-plan-review label
         if: success()

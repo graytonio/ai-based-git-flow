@@ -66,14 +66,14 @@ jobs:
           t = open('.github/prompts/implementer-initial.md').read()
           t = t.replace('{{PLAN_PATH}}', os.environ['PLAN_PATH'])
           t = t.replace('{{PR_NUMBER}}', os.environ['PR_NUMBER'])
-          open('/tmp/prompt.md', 'w').write(t)
+          open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w').write(t)
           "
 
       - name: Run implementer agent
         uses: ./.github/actions/implementer
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt-file: /tmp/prompt.md
+          prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Swap labels on success
         if: success()
