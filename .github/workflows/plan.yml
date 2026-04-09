@@ -63,11 +63,13 @@ jobs:
           import os
           custom = os.environ.get('CUSTOM_PROMPT', '').strip()
           path = custom if custom else '_ai-git-flow/.github/prompts/planner-initial.md'
-          t = open(path).read()
+          with open(path) as f:
+              t = f.read()
           t = t.replace('{{ISSUE_NUMBER}}', os.environ['ISSUE_NUMBER'])
           t = t.replace('{{ISSUE_TITLE}}', os.environ['ISSUE_TITLE'])
           t = t.replace('{{ISSUE_BODY}}', os.environ['ISSUE_BODY'])
-          open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w').write(t)
+          with open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w') as f:
+              f.write(t)
           "
 
       - name: Run planner agent
@@ -98,6 +100,6 @@ jobs:
         run: |
           BRANCH="plan/issue-${ISSUE_NUMBER}"
           PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
-          if [ -n "$PR_NUMBER" ]; then
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
             gh pr edit "$PR_NUMBER" --add-label "$LABEL"
           fi
