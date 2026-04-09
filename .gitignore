@@ -3,3 +3,6 @@
 
 # Git worktrees
 .worktrees/
+
+# Temporary sparse checkout used by reusable workflows
+_ai-git-flow/
