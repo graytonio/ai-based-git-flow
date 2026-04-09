@@ -3,6 +3,27 @@ name: AI Plan
 on:
   issues:
     types: [opened]
+  workflow_call:
+    secrets:
+      anthropic-api-key:
+        description: 'Anthropic API key'
+        required: true
+    inputs:
+      needs-plan-review-label:
+        description: 'Label to apply when plan is ready for review'
+        required: false
+        default: 'needs-plan-review'
+        type: string
+      needs-human-intervention-label:
+        description: 'Label to apply on agent failure'
+        required: false
+        default: 'needs-human-intervention'
+        type: string
+      planner-initial-prompt:
+        description: 'Path to custom planner prompt (relative to repo root). Omit to use built-in default.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -18,15 +39,28 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      - name: Fetch ai-git-flow resources
+        uses: actions/checkout@v4
+        with:
+          repository: graytonio/ai-based-git-flow
+          ref: main
+          path: _ai-git-flow
+          sparse-checkout: |
+            .github/prompts
+            .claude/plugins/superpowers
+
       - name: Prepare prompt
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          CUSTOM_PROMPT: ${{ inputs.planner-initial-prompt }}
         run: |
           python3 -c "
           import os
-          t = open('.github/prompts/planner-initial.md').read()
+          custom = os.environ.get('CUSTOM_PROMPT', '').strip()
+          path = custom if custom else '_ai-git-flow/.github/prompts/planner-initial.md'
+          t = open(path).read()
           t = t.replace('{{ISSUE_NUMBER}}', os.environ['ISSUE_NUMBER'])
           t = t.replace('{{ISSUE_TITLE}}', os.environ['ISSUE_TITLE'])
           t = t.replace('{{ISSUE_BODY}}', os.environ['ISSUE_BODY'])
@@ -36,7 +70,7 @@ jobs:
       - name: Run planner agent
         uses: ./.github/actions/planner
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ secrets.anthropic-api-key }}
           prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Apply needs-plan-review label
@@ -44,11 +78,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LABEL: ${{ inputs.needs-plan-review-label || 'needs-plan-review' }}
         run: |
           BRANCH="plan/issue-${ISSUE_NUMBER}"
           PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
-            gh pr edit "$PR_NUMBER" --add-label "needs-plan-review"
+            gh pr edit "$PR_NUMBER" --add-label "$LABEL"
           fi
 
       - name: Apply needs-human-intervention on failure
@@ -56,9 +91,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LABEL: ${{ inputs.needs-human-intervention-label || 'needs-human-intervention' }}
         run: |
           BRANCH="plan/issue-${ISSUE_NUMBER}"
           PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$PR_NUMBER" ]; then
-            gh pr edit "$PR_NUMBER" --add-label "needs-human-intervention"
+            gh pr edit "$PR_NUMBER" --add-label "$LABEL"
           fi
