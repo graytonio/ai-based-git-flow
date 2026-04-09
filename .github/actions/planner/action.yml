@@ -28,12 +28,12 @@ runs:
     - name: Copy superpowers plugin
       shell: bash
       run: |
-        if [ ! -d "$GITHUB_WORKSPACE/.claude/plugins/superpowers" ]; then
-          echo "ERROR: superpowers plugin not found at $GITHUB_WORKSPACE/.claude/plugins/superpowers" >&2
+        if [ ! -d "$GITHUB_WORKSPACE/_ai-git-flow/.claude/plugins/superpowers" ]; then
+          echo "ERROR: superpowers plugin not found at $GITHUB_WORKSPACE/_ai-git-flow/.claude/plugins/superpowers" >&2
           exit 1
         fi
         mkdir -p ~/.claude/plugins
-        cp -r "$GITHUB_WORKSPACE/.claude/plugins/superpowers" ~/.claude/plugins/superpowers
+        cp -r "$GITHUB_WORKSPACE/_ai-git-flow/.claude/plugins/superpowers" ~/.claude/plugins/superpowers
 
     - name: Run planner agent
       shell: bash
