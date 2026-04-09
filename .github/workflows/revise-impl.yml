@@ -3,6 +3,30 @@ name: AI Revise Implementation
 on:
   pull_request_review_comment:
     types: [created]
+  workflow_call:
+    secrets:
+      anthropic-api-key:
+        description: 'Anthropic API key'
+        required: true
+      ANTHROPIC_API_KEY:
+        description: 'Anthropic API key (fallback for native triggers)'
+        required: false
+    inputs:
+      needs-code-review-label:
+        description: 'Label that marks a PR as awaiting code review'
+        required: false
+        default: 'needs-code-review'
+        type: string
+      needs-human-intervention-label:
+        description: 'Label to apply on agent failure'
+        required: false
+        default: 'needs-human-intervention'
+        type: string
+      implementer-revise-prompt:
+        description: 'Path to custom implementer revision prompt (relative to repo root). Omit to use built-in default.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -24,20 +48,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEEDS_CODE_REVIEW_LABEL: ${{ inputs.needs-code-review-label || 'needs-code-review' }}
         run: |
           # Skip bot comments
           if [ "$COMMENT_AUTHOR" = "github-actions[bot]" ]; then
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Check PR has needs-code-review label
-          HAS_LABEL=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | contains(["needs-code-review"]) | if . then "1" else "0" end')
+          # Check PR has the code-review label
+          HAS_LABEL=$(gh pr view "$PR_NUMBER" --json labels \
+            --jq --arg label "$NEEDS_CODE_REVIEW_LABEL" \
+            "[.labels[].name] | contains([\$label]) | if . then \"1\" else \"0\" end")
           if [ "$HAS_LABEL" != "1" ]; then
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Check PR has at least one approved human review
-          HAS_APPROVAL=$(gh pr view "$PR_NUMBER" --json reviews --jq '[.reviews[] | select(.state == "APPROVED" and (.author.login // "") != "github-actions[bot]")] | length')
+          HAS_APPROVAL=$(gh pr view "$PR_NUMBER" --json reviews \
+            --jq '[.reviews[] | select(.state == "APPROVED" and (.author.login // "") != "github-actions[bot]")] | length')
           if [ "$HAS_APPROVAL" = "0" ]; then
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -62,6 +90,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      - name: Fetch ai-git-flow resources
+        uses: actions/checkout@v4
+        with:
+          repository: graytonio/ai-based-git-flow
+          ref: main
+          path: _ai-git-flow
+          sparse-checkout: |
+            .github/prompts
+            .claude/plugins/superpowers
+
       - name: Checkout PR branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,22 +113,27 @@ jobs:
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           COMMENT_PATH: ${{ github.event.comment.path }}
           COMMENT_LINE: ${{ github.event.comment.line }}
+          CUSTOM_PROMPT: ${{ inputs.implementer-revise-prompt }}
         run: |
           python3 -c "
           import os
-          t = open('.github/prompts/implementer-revise.md').read()
+          custom = os.environ.get('CUSTOM_PROMPT', '').strip()
+          path = custom if custom else '_ai-git-flow/.github/prompts/implementer-revise.md'
+          with open(path) as f:
+              t = f.read()
           t = t.replace('{{PR_NUMBER}}', os.environ['PR_NUMBER'])
           t = t.replace('{{COMMENT_BODY}}', os.environ['COMMENT_BODY'])
           t = t.replace('{{COMMENT_AUTHOR}}', os.environ['COMMENT_AUTHOR'])
           t = t.replace('{{COMMENT_PATH}}', os.environ['COMMENT_PATH'])
           t = t.replace('{{COMMENT_LINE}}', os.environ.get('COMMENT_LINE') or 'unknown')
-          open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w').write(t)
+          with open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w') as f:
+              f.write(t)
           "
 
       - name: Run implementer agent
         uses: ./.github/actions/implementer
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ secrets.anthropic-api-key || secrets.ANTHROPIC_API_KEY }}
           prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Apply needs-human-intervention on failure
@@ -98,4 +141,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr edit "$PR_NUMBER" --add-label "needs-human-intervention"
+          LABEL: ${{ inputs.needs-human-intervention-label || 'needs-human-intervention' }}
+        run: gh pr edit "$PR_NUMBER" --add-label "$LABEL"
