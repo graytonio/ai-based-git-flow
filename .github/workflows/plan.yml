@@ -8,6 +8,9 @@ on:
       anthropic-api-key:
         description: 'Anthropic API key'
         required: true
+      ANTHROPIC_API_KEY:
+        description: 'Anthropic API key (fallback for native trigger)'
+        required: false
     inputs:
       needs-plan-review-label:
         description: 'Label to apply when plan is ready for review'
@@ -70,7 +73,7 @@ jobs:
       - name: Run planner agent
         uses: ./.github/actions/planner
         with:
-          anthropic-api-key: ${{ secrets.anthropic-api-key }}
+          anthropic-api-key: ${{ secrets.anthropic-api-key || secrets.ANTHROPIC_API_KEY }}
           prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Apply needs-plan-review label
