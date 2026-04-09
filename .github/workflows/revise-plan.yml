@@ -3,6 +3,30 @@ name: AI Revise Plan
 on:
   issue_comment:
     types: [created]
+  workflow_call:
+    secrets:
+      anthropic-api-key:
+        description: 'Anthropic API key'
+        required: true
+      ANTHROPIC_API_KEY:
+        description: 'Anthropic API key (fallback for native triggers)'
+        required: false
+    inputs:
+      needs-plan-review-label:
+        description: 'Label that marks a PR as awaiting plan review'
+        required: false
+        default: 'needs-plan-review'
+        type: string
+      needs-human-intervention-label:
+        description: 'Label to apply on agent failure'
+        required: false
+        default: 'needs-human-intervention'
+        type: string
+      planner-revise-prompt:
+        description: 'Path to custom plan revision prompt (relative to repo root). Omit to use built-in default.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -27,6 +51,7 @@ jobs:
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PR_URL: ${{ github.event.issue.pull_request.url }}
+          NEEDS_PLAN_REVIEW_LABEL: ${{ inputs.needs-plan-review-label || 'needs-plan-review' }}
         run: |
           # Skip bot comments
           if [ "$COMMENT_AUTHOR" = "github-actions[bot]" ]; then
@@ -38,8 +63,10 @@ jobs:
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Check PR has needs-plan-review label
-          HAS_LABEL=$(gh pr view "$ISSUE_NUMBER" --json labels --jq '[.labels[].name] | contains(["needs-plan-review"]) | if . then "1" else "0" end')
+          # Check PR has the plan-review label
+          HAS_LABEL=$(gh pr view "$ISSUE_NUMBER" --json labels \
+            --jq --arg label "$NEEDS_PLAN_REVIEW_LABEL" \
+            "[.labels[].name] | contains([\$label]) | if . then \"1\" else \"0\" end")
           if [ "$HAS_LABEL" != "1" ]; then
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -61,6 +88,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
+      - name: Fetch ai-git-flow resources
+        uses: actions/checkout@v4
+        with:
+          repository: graytonio/ai-based-git-flow
+          ref: main
+          path: _ai-git-flow
+          sparse-checkout: |
+            .github/prompts
+            .claude/plugins/superpowers
+
       - name: Checkout PR branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,21 +110,26 @@ jobs:
           PLAN_PATH: ${{ needs.guard.outputs.plan-path }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          CUSTOM_PROMPT: ${{ inputs.planner-revise-prompt }}
         run: |
           python3 -c "
           import os
-          t = open('.github/prompts/planner-revise.md').read()
+          custom = os.environ.get('CUSTOM_PROMPT', '').strip()
+          path = custom if custom else '_ai-git-flow/.github/prompts/planner-revise.md'
+          with open(path) as f:
+              t = f.read()
           t = t.replace('{{ISSUE_NUMBER}}', os.environ['ISSUE_NUMBER'])
           t = t.replace('{{PLAN_PATH}}', os.environ['PLAN_PATH'])
           t = t.replace('{{COMMENT_BODY}}', os.environ['COMMENT_BODY'])
           t = t.replace('{{COMMENT_AUTHOR}}', os.environ['COMMENT_AUTHOR'])
-          open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w').write(t)
+          with open(os.environ['RUNNER_TEMP'] + '/prompt.md', 'w') as f:
+              f.write(t)
           "
 
       - name: Run planner agent
         uses: ./.github/actions/planner
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic-api-key: ${{ secrets.anthropic-api-key || secrets.ANTHROPIC_API_KEY }}
           prompt-file: ${{ env.RUNNER_TEMP }}/prompt.md
 
       - name: Apply needs-human-intervention on failure
@@ -95,4 +137,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ needs.guard.outputs.pr-number }}
-        run: gh pr edit "$PR_NUMBER" --add-label "needs-human-intervention"
+          LABEL: ${{ inputs.needs-human-intervention-label || 'needs-human-intervention' }}
+        run: gh pr edit "$PR_NUMBER" --add-label "$LABEL"
