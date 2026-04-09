@@ -19,6 +19,15 @@ runs:
       shell: bash
       run: npm install -g @anthropic-ai/claude-code
 
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 'stable'
+        cache: false
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
     - name: Configure git identity
       shell: bash
       run: |
