@@ -82,7 +82,7 @@ Prompts live in `.github/prompts/`. Each workflow prepares a prompt at runtime b
 
 ### Superpowers Plugin
 
-A pinned copy of the [superpowers](https://github.com/anthropics/claude-code-superpowers) plugin lives at `.claude/plugins/superpowers/` (MIT license). It's copied to the runner at CI time so agents have access to planning, implementation, and code-review skills without network calls during execution.
+A pinned copy of the [superpowers](https://github.com/anthropics/claude-code-superpowers) plugin lives at `.claude/plugins/superpowers/` (MIT license). Each workflow sparse-checks out this repo at runtime to fetch the plugin and default prompts into a temporary `_ai-git-flow/` directory, so agents always have the correct version without any marketplace network calls.
 
 ## Repository Layout
 
@@ -109,10 +109,14 @@ A pinned copy of the [superpowers](https://github.com/anthropics/claude-code-sup
 
 ## Setup
 
+### Option A: Reusable Workflows (recommended)
+
+Adopt the pipeline without copying any code. Your repo calls the workflows hosted here.
+
 **1. Add a repository secret:**
 - `ANTHROPIC_API_KEY` — your Anthropic API key
 
-**2. Create four labels in the repository:**
+**2. Create four labels:**
 - `needs-plan-review`
 - `plan-approved`
 - `needs-code-review`
@@ -120,7 +124,89 @@ A pinned copy of the [superpowers](https://github.com/anthropics/claude-code-sup
 
 **3. Ensure GitHub Actions has write permissions** (Settings → Actions → General → Workflow permissions → Read and write).
 
-That's it. Open an issue and the pipeline starts automatically.
+**4. Create four wrapper workflow files in your repo:**
+
+`.github/workflows/plan.yml`
+```yaml
+on:
+  issues:
+    types: [opened]
+jobs:
+  plan:
+    uses: graytonio/ai-based-git-flow/.github/workflows/plan.yml@v1
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+`.github/workflows/revise-plan.yml`
+```yaml
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  revise-plan:
+    uses: graytonio/ai-based-git-flow/.github/workflows/revise-plan.yml@v1
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+`.github/workflows/implement.yml`
+```yaml
+on:
+  pull_request:
+    types: [labeled]
+jobs:
+  implement:
+    uses: graytonio/ai-based-git-flow/.github/workflows/implement.yml@v1
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+`.github/workflows/revise-impl.yml`
+```yaml
+on:
+  pull_request_review_comment:
+    types: [created]
+jobs:
+  revise-impl:
+    uses: graytonio/ai-based-git-flow/.github/workflows/revise-impl.yml@v1
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+That's it. Open an issue and the pipeline starts.
+
+#### Customization
+
+All four workflows accept optional `with:` inputs to override label names or swap in your own prompt files:
+
+```yaml
+jobs:
+  plan:
+    uses: graytonio/ai-based-git-flow/.github/workflows/plan.yml@v1
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      needs-plan-review-label: ai-plan-ready        # custom label name
+      planner-initial-prompt: .github/prompts/my-planner.md  # custom prompt
+```
+
+| Input | Default | Available in |
+|---|---|---|
+| `needs-plan-review-label` | `needs-plan-review` | `plan.yml`, `revise-plan.yml` |
+| `plan-approved-label` | `plan-approved` | `implement.yml` |
+| `needs-code-review-label` | `needs-code-review` | `implement.yml`, `revise-impl.yml` |
+| `needs-human-intervention-label` | `needs-human-intervention` | all four |
+| `planner-initial-prompt` | _(built-in)_ | `plan.yml` |
+| `planner-revise-prompt` | _(built-in)_ | `revise-plan.yml` |
+| `implementer-initial-prompt` | _(built-in)_ | `implement.yml` |
+| `implementer-revise-prompt` | _(built-in)_ | `revise-impl.yml` |
+
+Prompt paths are relative to your repo root. The file must exist in your repo at the time the workflow runs.
+
+### Option B: Fork / Copy
+
+Clone or fork this repo to own the full pipeline code. Follow the same steps 1–3 above, then open an issue. No wrapper files needed — the workflows trigger directly.
 
 ## Safety & Design Notes
 
