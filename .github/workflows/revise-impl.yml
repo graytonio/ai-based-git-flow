@@ -27,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      allowed-actors:
+        description: 'Comma-separated list of GitHub usernames allowed to trigger this workflow. If empty, defaults to collaborators and above (OWNER, MEMBER, COLLABORATOR).'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -47,13 +52,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           NEEDS_CODE_REVIEW_LABEL: ${{ inputs.needs-code-review-label || 'needs-code-review' }}
+          ALLOWED_ACTORS: ${{ inputs.allowed-actors }}
         run: |
           # Skip bot comments
           if [ "$COMMENT_AUTHOR" = "github-actions[bot]" ]; then
             echo "should-run=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          # Check actor authorization
+          if [ -n "$ALLOWED_ACTORS" ]; then
+            IFS=',' read -ra LIST <<< "$ALLOWED_ACTORS"
+            AUTHORIZED=false
+            for user in "${LIST[@]}"; do
+              trimmed=$(echo "$user" | xargs)
+              if [ "$trimmed" = "$COMMENT_AUTHOR" ]; then
+                AUTHORIZED=true
+                break
+              fi
+            done
+            if [ "$AUTHORIZED" = "false" ]; then
+              echo "Actor '$COMMENT_AUTHOR' is not in the allowed list — skipping" >&2
+              echo "should-run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          else
+            if [[ "$COMMENT_AUTHOR_ASSOCIATION" != "OWNER" && "$COMMENT_AUTHOR_ASSOCIATION" != "MEMBER" && "$COMMENT_AUTHOR_ASSOCIATION" != "COLLABORATOR" ]]; then
+              echo "Actor '$COMMENT_AUTHOR' has association '$COMMENT_AUTHOR_ASSOCIATION' — skipping" >&2
+              echo "should-run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
           # Check PR has the code-review label
           HAS_LABEL=$(gh pr view "$PR_NUMBER" --json labels \

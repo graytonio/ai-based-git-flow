@@ -27,13 +27,52 @@ on:
         required: false
         default: ''
         type: string
+      allowed-actors:
+        description: 'Comma-separated list of GitHub usernames allowed to trigger this workflow. If empty, defaults to collaborators and above (OWNER, MEMBER, COLLABORATOR).'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.check.outputs.should-run }}
+    steps:
+      - name: Check actor authorization
+        id: check
+        env:
+          ACTOR: ${{ github.event.issue.user.login }}
+          AUTHOR_ASSOCIATION: ${{ github.event.issue.author_association }}
+          ALLOWED_ACTORS: ${{ inputs.allowed-actors }}
+        run: |
+          if [ -n "$ALLOWED_ACTORS" ]; then
+            IFS=',' read -ra LIST <<< "$ALLOWED_ACTORS"
+            for user in "${LIST[@]}"; do
+              trimmed=$(echo "$user" | xargs)
+              if [ "$trimmed" = "$ACTOR" ]; then
+                echo "should-run=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            done
+            echo "Actor '$ACTOR' is not in the allowed list — skipping" >&2
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$AUTHOR_ASSOCIATION" == "OWNER" || "$AUTHOR_ASSOCIATION" == "MEMBER" || "$AUTHOR_ASSOCIATION" == "COLLABORATOR" ]]; then
+              echo "should-run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Actor '$ACTOR' has association '$AUTHOR_ASSOCIATION' — skipping" >&2
+              echo "should-run=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
   plan:
+    needs: guard
+    if: needs.guard.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
